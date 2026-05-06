@@ -1,4 +1,4 @@
-# Handloom Weaving Digital Twin 🚀🧶
+# Handloom Weaving Digital Twin 
 
 A high-fidelity, real-time, physics-based Digital Twin of a traditional Handloom weaving process. This project leverages the **FIWARE Framework** for IoT telemetry ingestion and **Three.js** for an interactive, data-driven 3D web simulation.
 
