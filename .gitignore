@@ -1,12 +1,31 @@
-# Large data files (>50MB)
-final_dataset_view.json
-final_dataset_fixed.json
-dataset.json
-dataset.csv
+# Environments
+venv/
+.venv/
+env/
+.env/
 
-# Notebook checkpoints
+# Python Cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Jupyter Notebooks
 .ipynb_checkpoints/
 .virtual_documents/
 
-# Data folder
+# IDEs
+.vscode/
+.idea/
+
+# Logs
+*.log
+
+# Data Files (Too large for GitHub)
+*.csv
+*.json
 data/
+
+# Allow small JSON configs if necessary
+!sample.json
+!package.json
+!manifest.json

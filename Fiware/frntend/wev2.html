@@ -1,0 +1,668 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Handloom Digital Twin — Thread Core</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Sora:wght@300;400;600&display=swap');
+
+  *{margin:0;padding:0;box-sizing:border-box;}
+  :root{
+    --bg:#030a1c;
+    --panel:rgba(5,16,45,0.7);
+    --border:#143070;
+    --accent:#00e5ff;
+    --accent2:#00ff88;
+    --warn:#ffaa00;
+    --fault:#ff1744;
+    --text:#d0e0ff;
+    --muted:#6080c0;
+    --font-mono:'Space Mono',monospace;
+    --font-ui:'Sora',sans-serif;
+  }
+  html,body{width:100%;height:100%;overflow:hidden;background:linear-gradient(135deg, #020611 0%, #08173d 100%);color:var(--text);font-family:var(--font-ui);}
+
+  #canvas-container{position:fixed;inset:0;z-index:0;}
+  #canvas-container canvas{display:block;width:100%!important;height:100%!important;}
+
+  /* ── TOP BAR ── */
+  #topbar{
+    position:fixed;top:0;left:0;right:0;z-index:10;
+    display:flex;align-items:center;justify-content:space-between;
+    padding:0 20px;height:48px;
+    background:linear-gradient(to bottom,rgba(3,10,28,0.97),rgba(3,10,28,0.0));
+    border-bottom:1px solid rgba(20,48,112,0.5);
+  }
+  #topbar .logo{font-family:var(--font-mono);font-size:13px;letter-spacing:2px;color:var(--accent);text-transform:uppercase;}
+  #topbar .logo span{color:var(--muted);}
+  #status-pill{
+    display:flex;align-items:center;gap:8px;
+    font-family:var(--font-mono);font-size:11px;letter-spacing:1px;
+    padding:4px 12px;border-radius:20px;
+    border:1px solid var(--border);background:var(--panel);
+  }
+  #status-dot{width:7px;height:7px;border-radius:50%;background:var(--muted);transition:background 0.4s,box-shadow 0.4s;}
+  #status-dot.on{background:var(--accent2);box-shadow:0 0 8px var(--accent2);}
+  #status-dot.fault{background:var(--fault);box-shadow:0 0 10px var(--fault);}
+  #topbar .ts{font-family:var(--font-mono);font-size:10px;color:var(--muted);letter-spacing:1px;}
+
+  /* ── CARDS ── */
+  .card{
+    background:linear-gradient(180deg, rgba(16,40,90,0.4) 0%, rgba(5,15,40,0.8) 100%);
+    border:1px solid var(--border);
+    border-radius:4px;padding:14px 16px;
+    backdrop-filter:blur(10px);
+    box-shadow:inset 0 0 20px rgba(0,229,255,0.05);
+    position:relative;overflow:hidden;
+    margin-bottom: 10px;
+  }
+  .card::before{
+    content:"";position:absolute;top:0;left:0;width:8px;height:8px;
+    border-top:2px solid var(--accent);border-left:2px solid var(--accent);
+  }
+  .card::after{
+    content:"";position:absolute;bottom:0;right:0;width:8px;height:8px;
+    border-bottom:2px solid var(--accent);border-right:2px solid var(--accent);
+  }
+  .card-title{
+    font-family:var(--font-mono);font-size:9px;letter-spacing:2px;
+    color:var(--muted);text-transform:uppercase;margin-bottom:10px;
+  }
+
+  /* ── LEFT PANEL : PATTERN VISUALIZER ── */
+  #left-panel{
+    position:fixed;left:16px;top:60px;bottom:16px;z-index:10;
+    width:280px;display:flex;flex-direction:column;gap:10px;
+  }
+  #matrix-grid{
+    display:grid; gap:4px; 
+    padding:8px; border:1px solid var(--border);
+    background:rgba(0,0,0,0.3); border-radius:4px;
+  }
+  .matrix-cell{
+    width:100%; aspect-ratio:1; border-radius:2px;
+    background:var(--panel); border:1px solid rgba(255,255,255,0.05);
+    display:flex;align-items:center;justify-content:center;
+    font-family:var(--font-mono); font-size:10px; color:transparent;
+    transition: all 0.3s ease;
+  }
+  .matrix-cell.active-val{
+    background:var(--accent); border-color:var(--accent); color:#000;
+    box-shadow:0 0 8px rgba(0,229,255,0.5);
+  }
+  .matrix-cell.inactive-val{
+    background:transparent; border-color:var(--muted);
+  }
+  .matrix-cell.scan-glow{
+    background:#ffffff !important; border-color:#fff !important; color:#000;
+    box-shadow:0 0 15px #ffffff, 0 0 30px #ffffff;
+    transform:scale(1.15); z-index:5;
+  }
+  .matrix-row.active-row .matrix-cell{
+    border-color:var(--accent2);
+  }
+  .matrix-row.active-row .matrix-cell.active-val{
+    background:var(--accent2); box-shadow:0 0 10px var(--accent2);
+  }
+
+  /* ── RIGHT PANEL : DATA ── */
+  #right-panel{
+    position:fixed;right:16px;top:60px;bottom:16px;z-index:10;
+    width:240px;display:flex;flex-direction:column;gap:10px;
+  }
+  .dp-row{display:flex;justify-content:space-between;margin-bottom:8px;font-family:var(--font-mono);font-size:11px;}
+  .dp-label{color:var(--muted);}
+  .dp-val{color:var(--accent);font-weight:700;}
+
+  /* ── BOTTOM BAR ── */
+  #bottombar{
+    position:fixed;bottom:0;left:0;right:0;z-index:10;
+    height:40px;display:flex;align-items:center;gap:24px;padding:0 20px;
+    background:linear-gradient(to top,rgba(3,10,28,0.97),rgba(3,10,28,0));
+    border-top:1px solid rgba(20,48,112,0.5);
+    font-family:var(--font-mono);font-size:10px;letter-spacing:1px;
+  }
+  #connection-info{margin-left:auto;color:var(--muted);}
+
+  /* RELAY BANNER */
+  #relay-banner{
+    display:none;position:fixed;top:56px;left:50%;transform:translateX(-50%);
+    background:rgba(255,145,0,0.12);border:1px solid var(--warn);
+    color:var(--warn);font-family:var(--font-mono);font-size:11px;
+    padding:8px 18px;border-radius:6px;z-index:20; text-align:center;
+  }
+
+</style>
+</head>
+<body>
+
+<div id="canvas-container"></div>
+
+<!-- TOP BAR -->
+<div id="topbar">
+  <div class="logo">Handloom <span>//</span> Core Thread View</div>
+  <div style="display:flex; gap:10px; align-items:center;">
+      <div id="status-pill">
+        <div id="status-dot"></div><span id="status-text">CONNECTING</span>
+      </div>
+      <div id="fiware-badge" style="display:none;font-family:var(--font-mono);font-size:10px;color:#00ff88;border:1px solid #00ff88;padding:4px 8px;border-radius:4px;background:rgba(0,255,136,0.1);">LIVE FIWARE DATA</div>
+  </div>
+  <div class="ts" id="ts-display">--:--:--</div>
+</div>
+
+<!-- LEFT PANEL -->
+<div id="left-panel">
+  <div class="card" style="flex:1;">
+    <div class="card-title">Weaving Design (Matrix)</div>
+    <div style="font-size:10px;color:var(--muted);margin-bottom:10px;font-family:var(--font-mono)">
+      1 = WARP UP (Cyan)<br/>0 = WARP DOWN (Grey)
+    </div>
+    <div id="matrix-container">
+      <!-- Grid injected via JS -->
+    </div>
+  </div>
+</div>
+
+<!-- RIGHT PANEL -->
+<div id="right-panel">
+  <div class="card">
+    <div class="card-title">Live Logic State</div>
+    <div class="dp-row"><span class="dp-label">Pattern ID</span><span class="dp-val" id="v-pid">--</span></div>
+    <div class="dp-row"><span class="dp-label">Active Row (Step)</span><span class="dp-val" id="v-row">0</span></div>
+    <div class="dp-row"><span class="dp-label">Shuttle Direction</span><span class="dp-val" id="v-dir">RIGHT 👉</span></div>
+    <div class="dp-row"><span class="dp-label">Weft Count</span><span class="dp-val" id="v-weft-c">0</span></div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Machine Telemetry</div>
+    <div class="dp-row"><span class="dp-label">Speed</span><span class="dp-val" style="color:var(--accent2)" id="v-speed">0 RPM</span></div>
+    <div class="dp-row"><span class="dp-label">Tension</span><span class="dp-val" id="v-tension">0.0 N</span></div>
+  </div>
+</div>
+
+<div id="bottombar">
+  <div id="controls-hint" style="color:var(--muted)">DRAG: rotate · SCROLL: zoom</div>
+  <div id="connection-info">RELAY → localhost:5050/twin</div>
+</div>
+
+<div id="relay-banner">⚠ Demo Mode — Real relay unavailable</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const container = document.getElementById('canvas-container');
+const W = () => window.innerWidth, H = () => window.innerHeight;
+const renderer = new THREE.WebGLRenderer({antialias:true,alpha:false});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+renderer.setSize(W(),H());
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.outputEncoding = THREE.sRGBEncoding;
+container.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x040e29);
+scene.fog = new THREE.FogExp2(0x040e29, 0.03);
+
+// ZOOMED IN CAMERA
+const camera = new THREE.PerspectiveCamera(35, W()/H(), 0.1, 100);
+camera.position.set(2, 3, 4);
+camera.lookAt(0, 0, 0);
+
+// ORBIT CONTROLS
+const orbitState = {
+  rotating:false, panning:false, lastX:0, lastY:0,
+  theta:0.8, phi:1.0, radius:7,
+  target:new THREE.Vector3(0,0,0)
+};
+function updateCamera(){
+  const x = orbitState.radius * Math.sin(orbitState.phi) * Math.sin(orbitState.theta);
+  const y = orbitState.radius * Math.cos(orbitState.phi);
+  const z = orbitState.radius * Math.sin(orbitState.phi) * Math.cos(orbitState.theta);
+  camera.position.set(orbitState.target.x+x, orbitState.target.y+y, orbitState.target.z+z);
+  camera.lookAt(orbitState.target);
+}
+updateCamera();
+renderer.domElement.addEventListener('mousedown', e=>{
+  if(e.button===0) orbitState.rotating=true;
+  if(e.button===2) orbitState.panning=true;
+  orbitState.lastX=e.clientX; orbitState.lastY=e.clientY;
+});
+renderer.domElement.addEventListener('mousemove', e=>{
+  const dx=e.clientX-orbitState.lastX, dy=e.clientY-orbitState.lastY;
+  orbitState.lastX=e.clientX; orbitState.lastY=e.clientY;
+  if(orbitState.rotating){
+    orbitState.theta -= dx*0.008;
+    orbitState.phi = Math.max(0.1, Math.min(Math.PI-0.1, orbitState.phi+dy*0.008));
+    updateCamera();
+  }
+});
+window.addEventListener('mouseup',()=>{orbitState.rotating=orbitState.panning=false;});
+renderer.domElement.addEventListener('wheel',e=>{
+  orbitState.radius = Math.max(2, Math.min(20, orbitState.radius + e.deltaY*0.01));
+  updateCamera();
+});
+window.addEventListener('resize',()=>{ camera.aspect=W()/H(); camera.updateProjectionMatrix(); renderer.setSize(W(),H()); });
+
+// LIGHTS
+const ambient = new THREE.AmbientLight(0x203060, 1.5);
+scene.add(ambient);
+const dLight = new THREE.DirectionalLight(0xffffff, 1.2);
+dLight.position.set(5,10,5);
+scene.add(dLight);
+const rim = new THREE.DirectionalLight(0x00e5ff, 1.0);
+rim.position.set(-5,3,-5);
+scene.add(rim);
+
+// CORE VISUALIZATION SETUP
+const THREAD_RADIUS = 0.02;
+const WARP_COUNT = 9; // Number of vertical threads to show cleanly
+const SPACING = 0.3; // Space between warps
+
+const MAT = {
+  warpUp: new THREE.MeshStandardMaterial({color:0x00e5ff, roughness:0.4, metalness:0.3}),
+  warpDown: new THREE.MeshStandardMaterial({color:0x4a5568, roughness:0.6, metalness:0.1}),
+  weft: new THREE.MeshStandardMaterial({color:0x76ff03, roughness:0.5, metalness:0.0}),
+  shuttle: new THREE.MeshStandardMaterial({color:0xffaa00, emissive:0xffaa00, emissiveIntensity:0.5}),
+  guide: new THREE.LineBasicMaterial({color: 0x143070, transparent: true, opacity: 0.5})
+};
+
+// Warp Tubes (Using Cylinders that pivot at Z=0 to form shed)
+const warpThreads = [];
+const warpGroup = new THREE.Group();
+scene.add(warpGroup);
+
+for(let i=0; i<WARP_COUNT; i++){
+    const x = (i - Math.floor(WARP_COUNT/2)) * SPACING;
+    
+    const pivot = new THREE.Group();
+    pivot.position.set(x, 0, 0); // pivot at weave line
+    
+    // Front part (shed)
+    const shedMesh = new THREE.Mesh(new THREE.CylinderGeometry(THREAD_RADIUS, THREAD_RADIUS, 5, 8), MAT.warpUp);
+    shedMesh.rotation.x = Math.PI/2; 
+    shedMesh.position.z = 2.5; 
+    pivot.add(shedMesh);
+    
+    // Back part (fabric) - we just keep it straight for visual simplicity
+    const backMesh = new THREE.Mesh(new THREE.CylinderGeometry(THREAD_RADIUS, THREAD_RADIUS, 10, 8), MAT.warpUp);
+    backMesh.rotation.x = Math.PI/2;
+    backMesh.position.z = -5;
+    pivot.add(backMesh);
+    
+    warpGroup.add(pivot);
+    warpThreads.push({
+        pivot: pivot,
+        frontMesh: shedMesh,
+        backMesh: backMesh,
+        currentAngle: 0,
+        targetAngle: 0
+    });
+}
+
+// Shuttle (Visual core passing through)
+const shuttleCore = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.8, 12), MAT.shuttle);
+shuttleCore.rotation.z = Math.PI/2;
+scene.add(shuttleCore);
+
+// Active Trail (the string pulling out from the shuttle)
+const activeTrail = new THREE.Mesh(new THREE.CylinderGeometry(THREAD_RADIUS*0.8, THREAD_RADIUS*0.8, 1, 8), MAT.weft);
+activeTrail.rotation.z = Math.PI/2;
+scene.add(activeTrail);
+
+// Comb / Reed (beats the thread into the fell line)
+const reedGroup = new THREE.Group();
+const dentMat = new THREE.MeshStandardMaterial({color:0x90a0b0, roughness:0.2, metalness:0.8});
+for(let i=0; i<=WARP_COUNT; i++) {
+    const _x = (i - Math.floor(WARP_COUNT/2) - 0.5) * SPACING;
+    const dent = new THREE.Mesh(new THREE.CylinderGeometry(0.005, 0.005, 1.2, 4), dentMat);
+    dent.position.set(_x, 0, 0);
+    reedGroup.add(dent);
+}
+const reedTop = new THREE.Mesh(new THREE.BoxGeometry(WARP_COUNT*SPACING + 0.4, 0.08, 0.08), MAT.warpDown);
+reedTop.position.set(0, 0.6, 0);
+const reedBot = new THREE.Mesh(new THREE.BoxGeometry(WARP_COUNT*SPACING + 0.4, 0.08, 0.08), MAT.warpDown);
+reedBot.position.set(0, -0.6, 0);
+reedGroup.add(reedTop, reedBot);
+reedGroup.position.set(0, 0, 1.2);
+scene.add(reedGroup);
+
+const fabricGroup = new THREE.Group();
+scene.add(fabricGroup);
+const pastWefts = [];
+
+// TWIN STATE
+let twin = {
+  speed:0, status:'OFF', warp_tension:0,
+  pattern_id: 'default',
+  pattern_matrix: [
+      [1,0,1,0,1,0,1,0,1],
+      [0,1,0,1,0,1,0,1,0],
+      [1,1,0,0,1,1,0,0,1]
+  ],
+  timestamp:''
+};
+
+let relayOk = null;
+let currentWeaveStep = 0;
+let weavePhase = 0; // 0 to 1 cycle
+let shuttleDir = 1; // 1 (L->R) or -1 (R->L)
+let totalWefts = 0;
+let fabricZShift = 0;
+
+// REBUILD MATRIX DOM
+function renderMatrixDOM() {
+    const cont = document.getElementById('matrix-container');
+    const m = twin.pattern_matrix;
+    if(!m || !Array.isArray(m) || m.length === 0 || !Array.isArray(m[0])) return;
+    
+    const cols = Math.min(m[0].length, WARP_COUNT);
+    cont.innerHTML = `<div id="matrix-grid" style="grid-template-columns: repeat(${cols}, 1fr);"></div>`;
+    const grid = document.getElementById('matrix-grid');
+    
+    for(let r=0; r<m.length; r++) {
+        for(let c=0; c<cols; c++) {
+            const val = m[r][c];
+            const div = document.createElement('div');
+            div.className = `matrix-cell row-${r} col-${c} ${val===1 ? 'active-val' : 'inactive-val'}`;
+            div.textContent = val;
+            grid.appendChild(div);
+        }
+    }
+}
+
+// UPDATE DOM
+function updateHUD() {
+    document.getElementById('ts-display').textContent = new Date().toLocaleTimeString();
+    document.getElementById('status-text').textContent = twin.status;
+    
+    const dot = document.getElementById('status-dot');
+    dot.className = twin.status === 'FAULT' ? 'fault' : (twin.status === 'ON' ? 'on' : 'off');
+    
+    document.getElementById('v-pid').textContent = twin.pattern_id || 'UNKNOWN';
+    document.getElementById('v-row').textContent = `Row ${currentWeaveStep}`;
+    document.getElementById('v-dir').textContent = shuttleDir === 1 ? 'RIGHT 👉' : '👈 LEFT';
+    document.getElementById('v-weft-c').textContent = totalWefts;
+    document.getElementById('v-speed').textContent = Math.round(twin.speed) + ' RPM';
+    document.getElementById('v-tension').textContent = (twin.warp_tension||0).toFixed(1) + ' N';
+    
+    // Highlight active row in matrix (Reset all first)
+    const cells = document.querySelectorAll('.matrix-cell');
+    cells.forEach(c => {
+        c.style.borderWidth = '1px';
+        c.style.borderColor = c.classList.contains('active-val') ? 'var(--accent)' : 'var(--muted)';
+        c.style.boxShadow = c.classList.contains('active-val') ? '0 0 8px rgba(0,229,255,0.5)' : 'none';
+        c.classList.remove('scan-glow');
+    });
+    
+    // Highlight the currently active row
+    const activeCells = document.querySelectorAll(`.matrix-cell.row-${currentWeaveStep}`);
+    activeCells.forEach(c => {
+        c.style.borderWidth = '2px';
+        c.style.borderColor = 'var(--accent2)';
+        if(c.classList.contains('active-val')) c.style.boxShadow = '0 0 10px var(--accent2)';
+    });
+
+    // Determine horizontal shuttle index corresponding to matrix
+    const totalWarpWidth = WARP_COUNT * SPACING;
+    let shuttleRelX = shuttleCore.position.x + (totalWarpWidth / 2);
+    let cellIndex = Math.floor((shuttleRelX / totalWarpWidth) * WARP_COUNT);
+    
+    if (shuttleCore.material.opacity > 0) {
+        // Clamp to valid range
+        cellIndex = Math.max(0, Math.min(WARP_COUNT - 1, cellIndex));
+        const activeCell = document.querySelector(`.matrix-cell.row-${currentWeaveStep}.col-${cellIndex}`);
+        if(activeCell) activeCell.classList.add('scan-glow');
+    }
+}
+
+// FETCH TWIN
+async function fetchTwin(){
+  try{
+    const res = await fetch('http://localhost:5050/twin', {signal:AbortSignal.timeout(2000)});
+    if(!res.ok) throw new Error('bad status');
+    const data = await res.json();
+    if(relayOk !== true) { 
+        relayOk = true; 
+        document.getElementById('relay-banner').style.display = 'none'; 
+        document.getElementById('fiware-badge').style.display = 'block';
+    }
+    
+    twin.speed = data.machine_speed?.value ?? data.speed?.value ?? 0;
+    twin.status = data.machine_status?.value ?? data.status?.value ?? 'OFF';
+    twin.warp_tension = data.thread_warp_tension?.value ?? data.warp_tension?.value ?? 0;
+    twin.pattern_id = 'PROCEDURAL_SIM'; // Ignoring FIWARE matrix for varied depiction
+    twin.defect_rate = data.defect_rate?.value ?? 0;
+    
+    // Matrix data from FIWARE is intentionally ignored for visual variety
+    updateHUD();
+  }catch(e){
+    if(relayOk !== false) { 
+        relayOk = false; 
+        document.getElementById('relay-banner').style.display = 'block'; 
+        document.getElementById('fiware-badge').style.display = 'none';
+        renderMatrixDOM(); 
+    }
+    const t = Date.now()/1000;
+    twin.speed = 40 + Math.sin(t*0.5)*20;
+    twin.status = 'ON';
+    twin.warp_tension = 5 + Math.sin(t)*2;
+    twin.defect_rate = Math.max(0, 0.02 + Math.sin(t*0.2)*0.03);
+    updateHUD();
+  }
+}
+setInterval(fetchTwin, 1500);
+fetchTwin();
+
+// SIMULATION LOOP
+const clock = new THREE.Clock();
+renderMatrixDOM();
+
+const MAX_SHED_ANGLE = 0.15; // radians up/down
+
+function animate(){
+  requestAnimationFrame(animate);
+  const delta = clock.getDelta();
+  const elapsed = clock.getElapsedTime();
+
+  const isRunning = twin.status === 'ON';
+  
+  if (isRunning && twin.speed > 0 && twin.pattern_matrix && twin.pattern_matrix.length > 0) {
+      // 🐢 Slow motion for detailed observation
+      const cycleTime = (twin.speed / 100) * 0.15; // slow speed multiplier
+      weavePhase += delta * cycleTime;
+      
+      // CYCLE WRAP -> DEPOSIT WEFT
+      if(weavePhase >= 1.0) {
+          weavePhase -= 1.0;
+          const oldRowData = twin.pattern_matrix[currentWeaveStep];
+          currentWeaveStep = (currentWeaveStep + 1) % twin.pattern_matrix.length;
+          shuttleDir *= -1;
+          totalWefts++;
+          
+          // Phase 6: True Fabric Interlacing & Tension & Defect
+          const cols = oldRowData.length;
+          const pts = [];
+          pts.push(new THREE.Vector3(-(WARP_COUNT*SPACING)/2 - 0.2, 0, 0));
+          
+          const sagAmount = Math.max(0, 5.0 - (twin.warp_tension||5)) * 0.05;
+          let brokenSegment = (Math.random() < (twin.defect_rate||0.0));
+          
+          for(let i=0; i<WARP_COUNT; i++) {
+             const x = (i - Math.floor(WARP_COUNT/2)) * SPACING;
+             const val = oldRowData[i % cols];
+             
+             const distFromCenter = x/((WARP_COUNT*SPACING)/2);
+             const sagY = -sagAmount * (1 - distFromCenter*distFromCenter);
+             
+             // If warp UP (1) -> weft goes BELOW (-0.03)
+             const y = (val === 1 ? -0.03 : 0.03) + sagY;
+             
+             if(brokenSegment && i === Math.floor(WARP_COUNT/2)) {
+                 pts.push(new THREE.Vector3(x, y - 0.1, 0)); // Drop thread drastically for tear/break effect
+             } else {
+                 pts.push(new THREE.Vector3(x, y, 0));
+             }
+          }
+          pts.push(new THREE.Vector3((WARP_COUNT*SPACING)/2 + 0.2, 0, 0));
+          
+          const curve = new THREE.CatmullRomCurve3(pts);
+          const tubeGeo = new THREE.TubeGeometry(curve, WARP_COUNT * 2, THREAD_RADIUS * 0.8, 8, false);
+          
+          let weftMat = MAT.weft;
+          if(brokenSegment) weftMat = new THREE.MeshStandardMaterial({color:0xff1744, roughness:0.5});
+          
+          const weft = new THREE.Mesh(tubeGeo, weftMat);
+          weft.userData.baseZ = fabricZShift; // lock relative position
+          fabricGroup.add(weft);
+          pastWefts.push(weft);
+          if(pastWefts.length > 80) {
+              const old = pastWefts.shift();
+              fabricGroup.remove(old);
+              old.geometry.dispose();
+          }
+          updateHUD();
+      }
+      
+      // Constant fabric movement away from camera (-Z direction)
+      fabricZShift += delta * cycleTime * 0.08; 
+      
+      // 1. EVALUATE MATRIX -> SET WARP TARGETS
+      const rowData = twin.pattern_matrix[currentWeaveStep];
+      const cols = rowData.length;
+      
+      for(let i=0; i<WARP_COUNT; i++) {
+          const val = rowData[i % cols];
+          const trd = warpThreads[i];
+          
+          // Phase 0.0 to 0.3: Open Shed
+          trd.targetAngle = val === 1 ? MAX_SHED_ANGLE : -MAX_SHED_ANGLE;
+          if(weavePhase <= 0.3) {
+              trd.currentAngle += (trd.targetAngle - trd.currentAngle) * (delta * 12); // smooth lerp
+          } else {
+              trd.currentAngle += (trd.targetAngle - trd.currentAngle) * (delta * 20); // lock fast
+          }
+          
+          // Rotate the pivot to open/close shed
+          trd.pivot.rotation.x = -trd.currentAngle;
+          
+          // Swap material color to highlight state
+          const useMat = val === 1 ? MAT.warpUp : MAT.warpDown;
+          trd.frontMesh.material = useMat;
+          trd.backMesh.material = useMat;
+      }
+      
+      // 2. SHUTTLE FLIGHT & WEFT TRAIL
+      // Flies horizontally through the gap during phase 0.3 -> 0.70
+      const flightStart = 0.3;
+      const flightEnd = 0.70;
+      const beatStart = 0.70;
+      const extent = (WARP_COUNT * SPACING) / 2 + 0.5;
+      
+      let xStart = shuttleDir === 1 ? -extent : extent;
+      let xEnd   = shuttleDir === 1 ?  extent : -extent;
+      
+      if(weavePhase < flightStart) {
+          shuttleCore.position.x = xStart;
+          shuttleCore.position.z = 0;
+          shuttleCore.material.opacity = 0;
+          activeTrail.visible = false;
+      } else if(weavePhase > flightEnd) {
+          shuttleCore.position.x = xEnd;
+          shuttleCore.position.z = 0;
+          shuttleCore.material.opacity = 0;
+          
+          // Complete trail
+          activeTrail.visible = true;
+          activeTrail.scale.y = (extent * 2) - 1.0;
+          activeTrail.position.set(0, 0, 0);
+      } else {
+          shuttleCore.material.opacity = 1;
+          const t = (weavePhase - flightStart) / (flightEnd - flightStart);
+          shuttleCore.position.x = xStart + (xEnd - xStart) * t;
+          shuttleCore.position.z = 0;
+          
+          // Grow the trail from the starting edge behind the shuttle
+          activeTrail.visible = true;
+          const currentLength = Math.abs(shuttleCore.position.x - (xStart + (shuttleDir === 1 ? 0.4 : -0.4)));
+          activeTrail.scale.y = Math.max(0.01, currentLength);
+          activeTrail.position.x = (xStart + shuttleCore.position.x) / 2;
+          activeTrail.position.z = 0;
+      }
+      
+      // 3. BEATING ALGORITHM (Reed Comb strikes thread)
+      if (weavePhase > beatStart) {
+          const tBeat = (weavePhase - beatStart) / (1.0 - beatStart);
+          const swing = Math.sin(tBeat * Math.PI); // 0 -> 1 -> 0
+          reedGroup.position.z = 1.2 - (swing * 1.2); // Strikes precisely at 0
+          reedGroup.rotation.x = -swing * 0.2;
+      } else {
+          reedGroup.position.z = 1.2;
+          reedGroup.rotation.x = 0;
+      }
+      
+      // 4. FABRIC SHUFFLE (Move wefts back)
+
+      for(let w of pastWefts) {
+          w.position.z = -(fabricZShift - w.userData.baseZ);
+      }
+      
+  }
+
+  // Idling sway
+  if(!isRunning) {
+      fabricGroup.position.y = Math.sin(elapsed) * 0.02;
+  } else {
+      fabricGroup.position.y = 0;
+  }
+
+  renderer.render(scene, camera);
+}
+animate();
+
+// Init HUD explicitly to clear empty state
+updateHUD();
+
+// Dynamic Overwrite for Depiction / Demonstration
+// Structured weave designs switching predictably
+const structuralPatterns = [
+    // Twill 2/2 Array Map
+    [
+        [1,1,0,0,1,1,0,0,1],
+        [0,1,1,0,0,1,1,0,0],
+        [0,0,1,1,0,0,1,1,0],
+        [1,0,0,1,1,0,0,1,1]
+    ],
+    // Basket 2x2 Array Map
+    [
+        [1,1,0,0,1,1,0,0,1],
+        [1,1,0,0,1,1,0,0,1],
+        [0,0,1,1,0,0,1,1,0],
+        [0,0,1,1,0,0,1,1,0]
+    ],
+    // Satin 4/1 Array Map
+    [
+        [1,0,0,0,0,1,0,0,0],
+        [0,0,1,0,0,0,0,1,0],
+        [0,0,0,0,1,0,0,0,0],
+        [0,1,0,0,0,0,1,0,0],
+        [0,0,0,1,0,0,0,0,1]
+    ]
+];
+let activePatternIndex = 0;
+
+setInterval(() => {
+    activePatternIndex = (activePatternIndex + 1) % structuralPatterns.length;
+    twin.pattern_matrix = structuralPatterns[activePatternIndex];
+    currentWeaveStep = 0; // reset safely to avoid out of bounds
+    
+    // Briefly flash the panel to show mutation
+    if(document.getElementById('matrix-grid')) {
+        document.getElementById('matrix-grid').style.boxShadow = '0 0 20px #00ff88';
+        setTimeout(() => { if(document.getElementById('matrix-grid')) document.getElementById('matrix-grid').style.boxShadow = 'none'; }, 600);
+    }
+    renderMatrixDOM();
+}, 20000); // 20-second blocks for each pattern observation
+
+</script>
+</body>
+</html>

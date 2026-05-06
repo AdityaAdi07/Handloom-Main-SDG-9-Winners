@@ -1,0 +1,1299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Handloom Digital Twin — 3D</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Sora:wght@300;400;600&display=swap');
+
+  *{margin:0;padding:0;box-sizing:border-box;}
+  :root{
+    --bg:#0a0c0f;
+    --panel:#111418;
+    --border:#1e2530;
+    --accent:#00e5ff;
+    --accent2:#76ff03;
+    --warn:#ff9100;
+    --fault:#ff1744;
+    --text:#e0e8f0;
+    --muted:#4a5568;
+    --font-mono:'Space Mono',monospace;
+    --font-ui:'Sora',sans-serif;
+  }
+  html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(--text);font-family:var(--font-ui);}
+
+  #canvas-container{position:fixed;inset:0;z-index:0;}
+  #canvas-container canvas{display:block;width:100%!important;height:100%!important;}
+
+  /* ── TOP BAR ── */
+  #topbar{
+    position:fixed;top:0;left:0;right:0;z-index:10;
+    display:flex;align-items:center;justify-content:space-between;
+    padding:0 20px;height:48px;
+    background:linear-gradient(to bottom,rgba(10,12,15,0.97),rgba(10,12,15,0.0));
+    border-bottom:1px solid var(--border);
+  }
+  #topbar .logo{font-family:var(--font-mono);font-size:13px;letter-spacing:2px;color:var(--accent);text-transform:uppercase;}
+  #topbar .logo span{color:var(--muted);}
+  #status-pill{
+    display:flex;align-items:center;gap:8px;
+    font-family:var(--font-mono);font-size:11px;letter-spacing:1px;
+    padding:4px 12px;border-radius:20px;
+    border:1px solid var(--border);background:rgba(17,20,24,0.9);
+  }
+  #status-dot{width:7px;height:7px;border-radius:50%;background:var(--muted);transition:background 0.4s,box-shadow 0.4s;}
+  #status-dot.on{background:var(--accent2);box-shadow:0 0 8px var(--accent2);}
+  #status-dot.fault{background:var(--fault);box-shadow:0 0 10px var(--fault);animation:pulse-fault 0.8s infinite;}
+  #status-dot.off{background:var(--muted);}
+  #topbar .ts{font-family:var(--font-mono);font-size:10px;color:var(--muted);letter-spacing:1px;}
+
+  @keyframes pulse-fault{0%,100%{opacity:1}50%{opacity:0.3}}
+
+  /* ── LEFT PANEL ── */
+  #left-panel{
+    position:fixed;left:16px;top:60px;bottom:16px;z-index:10;
+    width:210px;
+    display:flex;flex-direction:column;gap:10px;
+  }
+  .card{
+    background: linear-gradient(145deg, rgba(17,20,24,0.8), rgba(10,12,15,0.9));
+    border: 1px solid rgba(0, 229, 255, 0.15);
+    border-radius: 8px; padding: 16px;
+    backdrop-filter: blur(12px);
+    box-shadow: 0 4px 20px rgba(0,0,0,0.4), inset 0 0 15px rgba(0, 229, 255, 0.05);
+    position:relative; overflow:hidden;
+    transition: all 0.3s ease;
+  }
+  .card:hover {
+    border-color: rgba(0, 229, 255, 0.4);
+    box-shadow: 0 8px 30px rgba(0, 229, 255, 0.15), inset 0 0 20px rgba(0, 229, 255, 0.1);
+    transform: translateY(-2px);
+  }
+  .card::before{
+    content:"";position:absolute;top:0;left:0;width:12px;height:12px;
+    border-top:2px solid var(--accent);border-left:2px solid var(--accent);
+    border-top-left-radius: 8px;
+  }
+  .card::after{
+    content:"";position:absolute;bottom:0;right:0;width:12px;height:12px;
+    border-bottom:2px solid var(--accent);border-right:2px solid var(--accent);
+    border-bottom-right-radius: 8px;
+  }
+  .card-title{
+    font-family:var(--font-mono);font-size:10px;letter-spacing:2px;
+    color:var(--accent);text-transform:uppercase;margin-bottom:12px;
+    border-bottom: 1px solid rgba(0,229,255,0.1); padding-bottom: 6px;
+  }
+
+  /* gauge */
+  .gauge-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;}
+  .gauge-label{font-size:11px;color:var(--muted);font-weight:600;}
+  .gauge-val{font-family:var(--font-mono);font-size:13px;color:var(--text);font-weight:bold;}
+  .gauge-bar-wrap{
+    height:6px;background:rgba(255,255,255,0.06);
+    border-radius:3px;margin-bottom:6px;
+    box-shadow: inset 0 1px 3px rgba(0,0,0,0.5);
+    overflow:hidden;
+  }
+  .gauge-bar{
+    height:100%;border-radius:3px;
+    transition:width 0.5s cubic-bezier(0.4, 0, 0.2, 1), background 0.4s;
+    box-shadow: 0 0 10px currentColor;
+    position: relative;
+  }
+  .gauge-bar::after {
+    content: ''; position: absolute; top: 0; left: 0; bottom: 0; right: 0;
+    background: linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.5) 50%, rgba(255,255,255,0) 100%);
+    animation: load-shimmer 2s infinite linear;
+  }
+  @keyframes load-shimmer {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+  }
+
+  /* big number */
+  .big-metric{text-align:center;padding:6px 0 4px;}
+  .big-num{font-family:var(--font-mono);font-size:36px;line-height:1;letter-spacing:-1px;}
+  .big-unit{font-size:10px;color:var(--muted);letter-spacing:2px;margin-top:3px;}
+
+  /* mode badge */
+  #mode-badge{
+    display:inline-block;font-family:var(--font-mono);font-size:11px;letter-spacing:2px;
+    padding:4px 10px;border-radius:4px;margin-top:4px;
+    border:1px solid var(--accent);color:var(--accent);background:rgba(0,229,255,0.06);
+  }
+
+  /* yarn badge */
+  #yarn-badge{
+    font-family:var(--font-mono);font-size:11px;
+    letter-spacing:1px;padding:3px 8px;border-radius:4px;
+    background:rgba(118,255,3,0.08);border:1px solid var(--accent2);color:var(--accent2);
+  }
+
+  /* ── RIGHT PANEL ── */
+  #right-panel{
+    position:fixed;right:16px;top:60px;bottom:16px;z-index:10;
+    width:200px;display:flex;flex-direction:column;gap:10px;
+  }
+
+  /* mini chart */
+  #history-canvas{width:100%;height:60px;display:block;}
+
+  /* fault log */
+  #fault-log{
+    font-family:var(--font-mono);font-size:10px;
+    height:100%;overflow-y:auto;
+    position:relative;padding-right:4px;
+  }
+  #fault-log::before{
+    content:"";position:absolute;inset:0;
+    background:linear-gradient(rgba(18,16,16,0) 50%, rgba(0,0,0,0.1) 50%),
+               linear-gradient(90deg, rgba(255,0,0,0.03), rgba(0,255,0,0.01), rgba(0,0,255,0.03));
+    background-size:100% 2px, 3px 100%;pointer-events:none;z-index:1;
+  }
+  .fault-entry{color:var(--fault);padding:4px 0;border-bottom:1px solid rgba(255,23,68,0.05);position:relative;z-index:2;}
+  .fault-entry.ok{color:var(--accent2);}
+  .fault-entry.info{color:var(--muted);}
+
+  /* ── BOTTOM BAR ── */
+  #bottombar{
+    position:fixed;bottom:0;left:0;right:0;z-index:10;
+    height:40px;display:flex;align-items:center;gap:24px;padding:0 20px;
+    background:linear-gradient(to top,rgba(10,12,15,0.97),rgba(10,12,15,0));
+    border-top:1px solid var(--border);
+    font-family:var(--font-mono);font-size:10px;letter-spacing:1px;
+  }
+  .bstat{display:flex;align-items:center;gap:6px;color:var(--muted);}
+  .bstat span{color:var(--text);}
+  #connection-info{margin-left:auto;color:var(--muted);}
+
+  /* ── CONTROLS HINT ── */
+  #controls-hint{
+    position:fixed;bottom:48px;left:50%;transform:translateX(-50%);
+    font-family:var(--font-mono);font-size:10px;color:var(--muted);
+    letter-spacing:1px;opacity:0.5;pointer-events:none;
+    transition:opacity 1s;
+  }
+
+  /* FAULT OVERLAY */
+  #fault-overlay{
+    position:fixed;inset:0;z-index:5;pointer-events:none;
+    border:3px solid var(--fault);
+    box-shadow:inset 0 0 60px rgba(255,23,68,0.25);
+    opacity:0;transition:opacity 0.4s;border-radius:0;
+  }
+  #fault-overlay.active{opacity:1;animation:fault-flash 1s infinite;}
+  @keyframes fault-flash{0%,100%{opacity:1}50%{opacity:0.4}}
+
+  /* RELAY NOT FOUND */
+  #relay-banner{
+    display:none;position:fixed;top:56px;left:50%;transform:translateX(-50%);
+    background:rgba(255,145,0,0.12);border:1px solid var(--warn);
+    color:var(--warn);font-family:var(--font-mono);font-size:11px;
+    letter-spacing:1px;padding:8px 18px;border-radius:6px;z-index:20;
+    text-align:center;
+  }
+
+  /* scrollbar */
+  ::-webkit-scrollbar{width:4px;}
+  ::-webkit-scrollbar-track{background:transparent;}
+  ::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
+
+  /* ── CALLOUTS ── */
+  .callout{
+    position:fixed;z-index:2;pointer-events:none;
+    display:flex;flex-direction:column;align-items:flex-start;
+    font-family:var(--font-mono);opacity:0;transition:opacity 0.5s;
+  }
+  .callout.visible{opacity:1;}
+  .callout-label{
+    background:rgba(17,20,24,0.95);border:1px solid var(--accent);
+    padding:4px 10px;border-radius:4px;font-size:10px;color:var(--accent);
+    box-shadow:0 0 15px rgba(0,229,255,0.2);white-space:nowrap;
+    display:flex;align-items:center;gap:6px;
+  }
+  .callout-val{color:var(--text);font-weight:700;font-size:12px;}
+  .callout-line{
+    width:2px;background:linear-gradient(to top,var(--accent),transparent);
+    height:30px;margin-left:15px;transform-origin:bottom;
+  }
+  .callout-dot{
+    width:6px;height:6px;background:var(--accent);border-radius:50%;
+    margin-left:13px;box-shadow:0 0 8px var(--accent);
+  }
+
+  /* ── WEAVE MODAL ── */
+  #weave-modal{
+    display:none; position:fixed; inset:0; z-index:999;
+    background:rgba(0,10,20,0.85); backdrop-filter:blur(8px);
+    align-items:center; justify-content:center;
+    animation: fadeIn 0.3s ease;
+  }
+  @keyframes fadeIn { from{opacity:0;} to{opacity:1;} }
+  #weave-iframe-container{
+    width:80%; height:80%;
+    border:2px solid var(--accent); border-radius:8px;
+    background:#000; position:relative;
+    box-shadow:0 0 40px rgba(0,229,255,0.2);
+  }
+  #weave-iframe{
+    width:100%; height:100%; border:none; border-radius:6px;
+  }
+  #close-modal{
+    position:absolute; top:-16px; right:-16px;
+    width:36px; height:36px; background:var(--fault);
+    border:2px solid #fff; border-radius:50%; color:#fff;
+    font-size:16px; font-weight:bold; cursor:pointer;
+    display:flex; align-items:center; justify-content:center;
+    z-index:1000; transition:transform 0.2s;
+  }
+  #close-modal:hover{ transform:scale(1.1); }
+  /* ── LIGHT MODE OVERRIDES ── */
+  body.light-mode {
+    --bg: #ffffff;
+    --panel: #ffffff;
+    --border: #d1d5db;
+    --accent: #0077ff;
+    --accent2: #16a34a;
+    --warn: #f59e0b;
+    --fault: #ef4444;
+    --text: #1a202c;
+    --muted: #6b7280;
+    background: var(--bg);
+  }
+  body.light-mode #topbar { background: rgba(255, 255, 255, 0.85); border-bottom: 1px solid rgba(0, 0, 0, 0.1); box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05); }
+  body.light-mode #topbar .logo { color: #1a202c; text-shadow: none; }
+  body.light-mode #topbar .logo span { color: var(--accent); }
+  body.light-mode #topbar .ts { color: var(--muted); }
+  body.light-mode .card { background: rgba(255, 255, 255, 0.9); border: 1px solid rgba(0, 0, 0, 0.1); box-shadow: 0 8px 32px rgba(0, 0, 0, 0.05); }
+  body.light-mode .card-title { color: var(--accent); border-bottom-color: rgba(0,0,0,0.1); }
+  body.light-mode .gauge-label { color: var(--muted); }
+  body.light-mode .gauge-val { color: var(--text); text-shadow: none; }
+  body.light-mode .gauge-bar-wrap { background: rgba(0,0,0,0.05); box-shadow: inset 0 0 5px rgba(0,0,0,0.05); }
+  body.light-mode .big-num { text-shadow: none; color: var(--accent); }
+  body.light-mode .big-unit { color: var(--muted); }
+  body.light-mode #status-pill { background: #f3f4f6; border-color: rgba(0,0,0,0.1); box-shadow: none; color: var(--text); }
+  body.light-mode #yarn-badge { background: #eff6ff; color: var(--accent); border-color: #bfdbfe; box-shadow: none; }
+  body.light-mode #history-canvas { background: rgba(0,0,0,0.02); border-color: rgba(0,0,0,0.1); box-shadow: none; }
+  body.light-mode .fault-entry.info { color: var(--accent); }
+  body.light-mode .fault-entry.ok { color: var(--accent2); text-shadow: none; }
+  body.light-mode .fault-entry { text-shadow: none; }
+  body.light-mode #bottombar { background: rgba(255, 255, 255, 0.85); border-top: 1px solid rgba(0, 0, 0, 0.1); box-shadow: 0 -4px 15px rgba(0, 0, 0, 0.05); }
+  body.light-mode .bstat { color: var(--muted); }
+  body.light-mode .bstat span { color: var(--text); text-shadow: none; }
+  body.light-mode #connection-info { background: #eff6ff; color: var(--accent); border-color: #bfdbfe; }
+  body.light-mode .callout-label { background: rgba(255,255,255,0.95); border-color: var(--accent); color: var(--accent); box-shadow: 0 0 10px rgba(0,0,0,0.05); }
+  body.light-mode .callout-val { color: var(--text); }
+  body.light-mode .callout-line { background: linear-gradient(to top, var(--accent), transparent); }
+  body.light-mode .callout-dot { background: var(--accent); box-shadow: none; }
+  body.light-mode #weave-modal { background: rgba(255,255,255,0.85); }
+  body.light-mode #controls-hint { color: var(--text); }
+  body.light-mode #mode-badge { border-color: var(--fault); color: white; background: var(--fault); box-shadow: none; }
+
+  .theme-btn {
+    background: transparent; border: 1px solid var(--border); color: var(--text);
+    border-radius: 50%; width: 32px; height: 32px; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 16px; transition: all 0.3s;
+  }
+  .theme-btn:hover { background: rgba(255, 255, 255, 0.1); }
+  body.light-mode .theme-btn { background: rgba(0, 0, 0, 0.05); border-color: rgba(0, 0, 0, 0.1); color: #1a202c; }
+  body.light-mode .theme-btn:hover { background: rgba(0, 0, 0, 0.1); }
+
+  /* LOOM INTELLIGENCE BUTTON */
+  #intelligence-btn {
+    background: var(--accent); color: #000; border: none; padding: 10px;
+    font-family: var(--font-mono); font-size: 11px; font-weight: bold;
+    letter-spacing: 1px; border-radius: 6px; cursor: pointer;
+    box-shadow: 0 0 15px rgba(0,229,255,0.2); transition: all 0.3s;
+    text-transform: uppercase; width: 100%; margin-top: 0;
+  }
+  #intelligence-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 0 20px rgba(0,229,255,0.6);
+  }
+  body.light-mode #intelligence-btn {
+    color: #ffffff;
+    box-shadow: 0 4px 10px rgba(0,119,255,0.3);
+  }
+  body.light-mode #intelligence-btn:hover {
+    box-shadow: 0 6px 15px rgba(0,119,255,0.4);
+  }
+</style>
+</head>
+<body>
+
+<div id="canvas-container"></div>
+<div id="fault-overlay"></div>
+
+<!-- WEAVE MODAL POPUP -->
+<div id="weave-modal">
+  <div id="weave-iframe-container">
+    <div id="close-modal">✕</div>
+    <iframe id="weave-iframe" src=""></iframe>
+  </div>
+</div>
+
+<!-- TOP BAR -->
+<div id="topbar">
+  <div class="logo">Handloom <span>//</span> Digital Twin</div>
+  <div id="status-pill">
+    <div id="status-dot"></div>
+    <span id="status-text">CONNECTING</span>
+  </div>
+  <div style="display:flex;align-items:center;gap:15px;">
+    <div class="ts" id="ts-display">--:--:--</div>
+    <button id="theme-toggle" class="theme-btn" title="Toggle Theme">☀️</button>
+  </div>
+</div>
+
+<!-- LEFT PANEL -->
+<div id="left-panel">
+  <div class="card">
+    <div class="card-title">Machine Speed</div>
+    <div class="big-metric">
+      <div class="big-num" id="v-speed" style="color:var(--accent)">0</div>
+      <div class="big-unit">RPM</div>
+    </div>
+    <div class="gauge-bar-wrap" style="margin-top:12px;"><div class="gauge-bar" id="b-speed" style="width:0%;background:var(--accent);color:var(--accent)"></div></div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Thread Tension</div>
+    <div class="gauge-row"><span class="gauge-label">Warp</span><span class="gauge-val" id="v-warp">0.00</span></div>
+    <div class="gauge-bar-wrap"><div class="gauge-bar" id="b-warp" style="width:0%;background:var(--accent2)"></div></div>
+    <div class="gauge-row" style="margin-top:6px"><span class="gauge-label">Weft</span><span class="gauge-val" id="v-weft">0.00</span></div>
+    <div class="gauge-bar-wrap"><div class="gauge-bar" id="b-weft" style="width:0%;background:var(--accent2)"></div></div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Environment</div>
+    <div class="gauge-row"><span class="gauge-label">Temperature</span><span class="gauge-val" id="v-temp">0.0°C</span></div>
+    <div class="gauge-bar-wrap"><div class="gauge-bar" id="b-temp" style="width:0%;background:var(--warn)"></div></div>
+    <div class="gauge-row" style="margin-top:6px"><span class="gauge-label">Vibration</span><span class="gauge-val" id="v-vib">0.00</span></div>
+    <div class="gauge-bar-wrap"><div class="gauge-bar" id="b-vib" style="width:0%;background:var(--accent)"></div></div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Mode &amp; Yarn</div>
+    <div id="mode-badge">AUTO</div><br/>
+    <div id="yarn-badge" style="margin-top:8px">COTTON</div>
+  </div>
+  
+  <button id="intelligence-btn">Loom Intelligence</button>
+</div>
+
+<!-- CALLOUTS -->
+<div id="co-speed" class="callout"><div class="callout-label">SPEED <span class="callout-val" id="co-speed-v">0</span> RPM</div><div class="callout-line"></div><div class="callout-dot"></div></div>
+<div id="co-temp" class="callout"><div class="callout-label">TEMP <span class="callout-val" id="co-temp-v">0</span> °C</div><div class="callout-line"></div><div class="callout-dot"></div></div>
+<div id="co-tension" class="callout"><div class="callout-label">TENSION <span class="callout-val" id="co-tension-v">0</span> N</div><div class="callout-line"></div><div class="callout-dot"></div></div>
+<div id="co-vib" class="callout"><div class="callout-label">VIBRATION <span class="callout-val" id="co-vib-v">0</span></div><div class="callout-line"></div><div class="callout-dot"></div></div>
+
+<!-- DIMENSION LABELS -->
+<div id="co-dim-w" class="callout"><div class="callout-label" style="background:rgba(0,0,0,0.6);border-color:rgba(255,255,255,0.2);color:#aaa;box-shadow:none;">WIDTH <span class="callout-val" style="color:#fff">4.8m</span></div></div>
+<div id="co-dim-d" class="callout"><div class="callout-label" style="background:rgba(0,0,0,0.6);border-color:rgba(255,255,255,0.2);color:#aaa;box-shadow:none;">DEPTH <span class="callout-val" style="color:#fff">2.6m</span></div></div>
+<div id="co-dim-h" class="callout"><div class="callout-label" style="background:rgba(0,0,0,0.6);border-color:rgba(255,255,255,0.2);color:#aaa;box-shadow:none;">HEIGHT <span class="callout-val" style="color:#fff">5.0m</span></div></div>
+
+<!-- RIGHT PANEL -->
+<div id="right-panel">
+  <div class="card">
+    <div class="card-title">Defect Rate</div>
+    <div class="big-metric">
+      <div class="big-num" id="v-defect" style="color:var(--accent2)">0.00</div>
+      <div class="big-unit">% DEFECT</div>
+    </div>
+    <div class="gauge-bar-wrap" style="margin-top:12px;"><div class="gauge-bar" id="b-defect" style="width:0%;background:var(--accent2);color:var(--accent2)"></div></div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Speed History</div>
+    <canvas id="history-canvas"></canvas>
+  </div>
+
+  <div class="card" style="flex:1;min-height:0;">
+    <div class="card-title">Event Log</div>
+    <div id="fault-log">
+      <div class="fault-entry info">— system initialising —</div>
+    </div>
+  </div>
+
+  <div class="card" style="padding: 10px 16px;">
+    <div class="card-title" style="margin-bottom:6px">Loom Identity</div>
+    <div style="display:flex; justify-content:space-between; align-items:flex-end;">
+      <div>
+        <div style="font-family:var(--font-mono);font-size:14px;color:var(--accent);font-weight:700;">loom_01</div>
+        <div style="font-size:9px;color:var(--muted);letter-spacing:1px;">NGSIv2 PROACTIVE</div>
+      </div>
+      <div style="font-family:var(--font-mono);font-size:9px;color:var(--accent2);opacity:0.8;">
+        <span id="conn-indicator">✓</span> RELAY:5050
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- BOTTOM BAR -->
+<div id="bottombar">
+  <div class="bstat">STATUS <span id="b-status">OFF</span></div>
+  <div class="bstat">CYCLES <span id="b-cycles">0</span></div>
+  <div class="bstat">EFFICIENCY <span id="b-eff">—</span></div>
+  <div class="bstat">QUALITY <span id="b-quality">—</span></div>
+  <div id="connection-info">RELAY → localhost:5050/twin</div>
+</div>
+
+<div id="controls-hint">DRAG to rotate · SCROLL to zoom · RIGHT-DRAG to pan</div>
+<div id="relay-banner">⚠ Relay not reachable — showing demo mode (start Flask relay on :5050)</div>
+
+<!-- THREE.JS -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+// ═══════════════════════════════════════════════
+//  SCENE SETUP
+// ═══════════════════════════════════════════════
+const container = document.getElementById('canvas-container');
+const W = () => window.innerWidth, H = () => window.innerHeight;
+
+const renderer = new THREE.WebGLRenderer({antialias:true,alpha:false});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+renderer.setSize(W(),H());
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.1;
+renderer.outputEncoding = THREE.sRGBEncoding;
+container.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0a0c0f);
+scene.fog = new THREE.FogExp2(0x0a0c0f, 0.018);
+
+const camera = new THREE.PerspectiveCamera(45, W()/H(), 0.1, 200);
+camera.position.set(7, 5, 9);
+camera.lookAt(0, 1.5, 0);
+
+// ── ORBIT CONTROLS (manual, no import needed) ──
+const orbitState = {
+  rotating:false, panning:false,
+  lastX:0, lastY:0,
+  theta:0.5, phi:1.0, radius:12,
+  target:new THREE.Vector3(0,1.5,0)
+};
+function updateCamera(){
+  const x = orbitState.radius * Math.sin(orbitState.phi) * Math.sin(orbitState.theta);
+  const y = orbitState.radius * Math.cos(orbitState.phi);
+  const z = orbitState.radius * Math.sin(orbitState.phi) * Math.cos(orbitState.theta);
+  camera.position.set(
+    orbitState.target.x+x,
+    orbitState.target.y+y,
+    orbitState.target.z+z
+  );
+  camera.lookAt(orbitState.target);
+}
+updateCamera();
+
+renderer.domElement.addEventListener('mousedown', e=>{
+  if(e.button===0) orbitState.rotating=true;
+  if(e.button===2) orbitState.panning=true;
+  orbitState.lastX=e.clientX; orbitState.lastY=e.clientY;
+});
+renderer.domElement.addEventListener('mousemove', e=>{
+  const dx=e.clientX-orbitState.lastX, dy=e.clientY-orbitState.lastY;
+  orbitState.lastX=e.clientX; orbitState.lastY=e.clientY;
+  if(orbitState.rotating){
+    orbitState.theta -= dx*0.008;
+    orbitState.phi = Math.max(0.2, Math.min(Math.PI-0.1, orbitState.phi+dy*0.008));
+    updateCamera();
+  }
+  if(orbitState.panning){
+    const right = new THREE.Vector3().crossVectors(
+      new THREE.Vector3().subVectors(orbitState.target, camera.position).normalize(),
+      camera.up
+    ).normalize();
+    orbitState.target.addScaledVector(right, -dx*0.015);
+    orbitState.target.y += dy*0.015;
+    updateCamera();
+  }
+});
+window.addEventListener('mouseup',()=>{orbitState.rotating=orbitState.panning=false;});
+renderer.domElement.addEventListener('wheel',e=>{
+  orbitState.radius = Math.max(3, Math.min(30, orbitState.radius + e.deltaY*0.02));
+  updateCamera();
+},{passive:true});
+renderer.domElement.addEventListener('contextmenu',e=>e.preventDefault());
+
+// Touch support
+let lastTouchDist=0;
+renderer.domElement.addEventListener('touchstart',e=>{
+  if(e.touches.length===1){orbitState.rotating=true;orbitState.lastX=e.touches[0].clientX;orbitState.lastY=e.touches[0].clientY;}
+  if(e.touches.length===2){lastTouchDist=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);}
+},{passive:true});
+renderer.domElement.addEventListener('touchmove',e=>{
+  if(e.touches.length===1&&orbitState.rotating){
+    const dx=e.touches[0].clientX-orbitState.lastX,dy=e.touches[0].clientY-orbitState.lastY;
+    orbitState.lastX=e.touches[0].clientX;orbitState.lastY=e.touches[0].clientY;
+    orbitState.theta-=dx*0.01;
+    orbitState.phi=Math.max(0.2,Math.min(Math.PI-0.1,orbitState.phi+dy*0.01));
+    updateCamera();
+  }
+  if(e.touches.length===2){
+    const d=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);
+    orbitState.radius=Math.max(3,Math.min(30,orbitState.radius+(lastTouchDist-d)*0.05));
+    lastTouchDist=d;updateCamera();
+  }
+},{passive:true});
+renderer.domElement.addEventListener('touchend',()=>{orbitState.rotating=false;},{passive:true});
+
+// ── RESIZE ──
+window.addEventListener('resize',()=>{
+  camera.aspect=W()/H(); camera.updateProjectionMatrix();
+  renderer.setSize(W(),H());
+});
+
+// ═══════════════════════════════════════════════
+//  LIGHTS
+// ═══════════════════════════════════════════════
+const ambientLight = new THREE.AmbientLight(0x1a2030, 0.8);
+scene.add(ambientLight);
+
+const keyLight = new THREE.DirectionalLight(0xffffff, 0.9);
+keyLight.position.set(6,10,6);
+keyLight.castShadow=true;
+keyLight.shadow.mapSize.set(2048,2048);
+keyLight.shadow.camera.near=0.1;
+keyLight.shadow.camera.far=40;
+keyLight.shadow.camera.top=keyLight.shadow.camera.right=10;
+keyLight.shadow.camera.bottom=keyLight.shadow.camera.left=-10;
+scene.add(keyLight);
+
+const fillLight = new THREE.DirectionalLight(0x2040ff,0.3);
+fillLight.position.set(-5,3,-3);
+scene.add(fillLight);
+
+const rimLight = new THREE.DirectionalLight(0x00e5ff,0.4);
+rimLight.position.set(0,6,-8);
+scene.add(rimLight);
+
+const loomLight = new THREE.PointLight(0x00e5ff,1.2,8);
+loomLight.position.set(0,4,0);
+scene.add(loomLight);
+
+// Ground
+const groundGeo = new THREE.PlaneGeometry(40,40);
+const groundMat = new THREE.MeshStandardMaterial({color:0x0d1017,roughness:0.95,metalness:0.05});
+const ground = new THREE.Mesh(groundGeo,groundMat);
+ground.rotation.x=-Math.PI/2; ground.receiveShadow=true; scene.add(ground);
+
+// Grid
+const grid = new THREE.GridHelper(30,30,0x1a2030,0x121820);
+grid.position.y=0.001; scene.add(grid);
+
+// ═══════════════════════════════════════════════
+//  MATERIALS
+// ═══════════════════════════════════════════════
+const MAT = {
+  wood: new THREE.MeshStandardMaterial({color:0x8B5E3C,roughness:0.8,metalness:0.0}),
+  woodDark: new THREE.MeshStandardMaterial({color:0x5C3D1E,roughness:0.85,metalness:0.0}),
+  metal: new THREE.MeshStandardMaterial({color:0x607080,roughness:0.3,metalness:0.8}),
+  metalShiny: new THREE.MeshStandardMaterial({color:0x90a0b0,roughness:0.15,metalness:0.95}),
+  thread: new THREE.MeshStandardMaterial({color:0x00e5ff,roughness:0.9,metalness:0.0}),
+  weftThread: new THREE.MeshStandardMaterial({color:0x76ff03,roughness:0.9,metalness:0.0}),
+  shuttle: new THREE.MeshStandardMaterial({color:0xd4a843,roughness:0.5,metalness:0.3}),
+  fabric: new THREE.MeshStandardMaterial({color:0x1a3a5c,roughness:0.95,metalness:0.0,side:THREE.DoubleSide}),
+};
+const faultMat = new THREE.MeshStandardMaterial({color:0xff1744,roughness:0.4,metalness:0.2,emissive:0xff1744,emissiveIntensity:0});
+
+function box(w,h,d,mat,x,y,z,castS=true){
+  const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat);
+  m.position.set(x,y,z); m.castShadow=castS; m.receiveShadow=true;
+  return m;
+}
+function cyl(rt,rb,h,seg,mat,x,y,z){
+  const m=new THREE.Mesh(new THREE.CylinderGeometry(rt,rb,h,seg),mat);
+  m.position.set(x,y,z); m.castShadow=true; m.receiveShadow=true;
+  return m;
+}
+
+// ═══════════════════════════════════════════════
+//  LOOM GROUP
+// ═══════════════════════════════════════════════
+const loomGroup = new THREE.Group();
+scene.add(loomGroup);
+
+// ── LEFT SIDE FRAME ──
+function buildSideFrame(xSign){
+  const g=new THREE.Group();
+  // Main vertical posts
+  g.add(box(0.18,5,0.18,MAT.woodDark,0,2.5,0));
+  g.add(box(0.18,5,0.18,MAT.woodDark,0,2.5,2.6));
+  // Horizontal cross-rails
+  g.add(box(0.14,0.14,2.6,MAT.wood,0,4.6,1.3));
+  g.add(box(0.14,0.14,2.6,MAT.wood,0,3.0,1.3));
+  g.add(box(0.14,0.14,2.6,MAT.wood,0,1.4,1.3));
+  g.add(box(0.14,0.14,2.6,MAT.wood,0,0.3,1.3));
+  // Foot/base brace
+  g.add(box(0.14,0.14,2.6,MAT.woodDark,0,0.08,1.3));
+  // Decorative turned legs (cylinders)
+  g.add(cyl(0.10,0.13,0.5,8,MAT.woodDark,0,0.25,0));
+  g.add(cyl(0.10,0.13,0.5,8,MAT.woodDark,0,0.25,2.6));
+  g.position.x = xSign*2.4;
+  return g;
+}
+loomGroup.add(buildSideFrame(-1));
+loomGroup.add(buildSideFrame(1));
+
+// ── BOTTOM FRAME ──
+loomGroup.add(box(4.8,0.14,0.14,MAT.woodDark,0,0.08,0));
+loomGroup.add(box(4.8,0.14,0.14,MAT.woodDark,0,0.08,2.6));
+loomGroup.add(box(4.8,0.14,2.6,MAT.woodDark,0,0.06,1.3));
+
+// ── BREAST BEAM (front horizontal at top) ──
+loomGroup.add(box(5.0,0.22,0.22,MAT.wood,0,4.6,0));
+
+// ── BACK BEAM ──
+loomGroup.add(box(5.0,0.22,0.22,MAT.woodDark,0,4.6,2.6));
+
+// ── CLOTH BEAM (bottom front) ──
+const clothBeamGroup = new THREE.Group();
+clothBeamGroup.add(cyl(0.14,0.14,4.8,16,MAT.metalShiny,0,0,0));
+clothBeamGroup.position.set(0,0.45,0.2);
+loomGroup.add(clothBeamGroup);
+
+// ── WARP BEAM (bottom back) ──
+const warpBeamGroup = new THREE.Group();
+warpBeamGroup.add(cyl(0.16,0.16,4.8,16,MAT.metalShiny,0,0,0));
+warpBeamGroup.position.set(0,0.5,2.4);
+loomGroup.add(warpBeamGroup);
+
+// ── HEDDLE FRAMES (2 shafts) ──
+const heddleFrames = [];
+function buildHeddleFrame(zOff,color){
+  const g=new THREE.Group();
+  const mat=new THREE.MeshStandardMaterial({color,roughness:0.4,metalness:0.6});
+  // Frame bars
+  g.add(box(3.8,0.1,0.06,mat,0,0.4,0));   // top bar
+  g.add(box(3.8,0.1,0.06,mat,0,-0.4,0));  // bottom bar
+  g.add(box(0.08,0.8,0.06,mat,-1.85,0,0)); // left
+  g.add(box(0.08,0.8,0.06,mat,1.85,0,0));  // right
+  // Heddle wires
+  for(let i=-1.7;i<=1.7;i+=0.18){
+    const wireMat=new THREE.MeshStandardMaterial({color:0x88aabb,roughness:0.5,metalness:0.8});
+    g.add(box(0.01,0.65,0.02,wireMat,i,0,0));
+  }
+  g.position.set(0,2.5,zOff);
+  return g;
+}
+const h1=buildHeddleFrame(1.05,0x4488aa);
+const h2=buildHeddleFrame(1.45,0x2266aa);
+loomGroup.add(h1); loomGroup.add(h2);
+heddleFrames.push(h1,h2);
+
+// ── REED (beater) ──
+const reedGroup = new THREE.Group();
+const reedFrameMat=new THREE.MeshStandardMaterial({color:0x7a6040,roughness:0.7,metalness:0.1});
+reedGroup.add(box(4.2,0.12,0.12,reedFrameMat,0,0.6,0));  // top
+reedGroup.add(box(4.2,0.12,0.12,reedFrameMat,0,-0.6,0)); // bottom
+reedGroup.add(box(0.1,1.2,0.1,reedFrameMat,-2.05,0,0));
+reedGroup.add(box(0.1,1.2,0.1,reedFrameMat,2.05,0,0));
+for(let i=-2.0;i<=2.0;i+=0.12){
+  const dent=new THREE.Mesh(new THREE.BoxGeometry(0.02,1.1,0.04),
+    new THREE.MeshStandardMaterial({color:0xaaaaaa,roughness:0.3,metalness:0.9}));
+  dent.position.set(i,0,0);
+  reedGroup.add(dent);
+}
+reedGroup.position.set(0,2.5,1.25);
+loomGroup.add(reedGroup);
+
+// ── WARP THREADS ──
+const warpGroup = new THREE.Group();
+const warpPositions = [];
+for(let i=-1.8;i<=1.8;i+=0.18){
+  const warpMat=MAT.thread.clone();
+  const warp=new THREE.Mesh(new THREE.CylinderGeometry(0.008,0.008,4.3,4),warpMat);
+  warp.position.set(i,2.5,1.3);
+  warpGroup.add(warp);
+  warpPositions.push(warp);
+}
+loomGroup.add(warpGroup);
+
+// ── WOVEN FABRIC ──
+const fabricGroup = new THREE.Group();
+const fabricMesh = new THREE.Mesh(
+  new THREE.PlaneGeometry(3.6,1.8,20,20),
+  new THREE.MeshStandardMaterial({
+    color:0x1a3a5c,roughness:0.95,metalness:0.0,
+    side:THREE.DoubleSide,
+    wireframe:false
+  })
+);
+fabricMesh.rotation.x=-Math.PI/2+0.3;
+fabricMesh.position.set(0,1.1,0.6);
+fabricGroup.add(fabricMesh);
+
+// Weft rows visible on fabric
+for(let r=0;r<6;r++){
+  const weftRow=new THREE.Mesh(
+    new THREE.CylinderGeometry(0.006,0.006,3.6,4),
+    MAT.weftThread.clone()
+  );
+  weftRow.rotation.z=Math.PI/2;
+  weftRow.position.set(0, 0.9+r*0.12, 0.45+r*0.07);
+  fabricGroup.add(weftRow);
+}
+loomGroup.add(fabricGroup);
+
+// ── SHUTTLE ──
+const shuttleGroup = new THREE.Group();
+const shuttleBody=new THREE.Mesh(
+  new THREE.CylinderGeometry(0.06,0.06,1.2,6),
+  MAT.shuttle
+);
+shuttleBody.rotation.z=Math.PI/2;
+// Pointed ends
+const sPt1=new THREE.Mesh(new THREE.ConeGeometry(0.06,0.22,6),MAT.shuttle);
+sPt1.rotation.z=-Math.PI/2; sPt1.position.x=0.7;
+const sPt2=new THREE.Mesh(new THREE.ConeGeometry(0.06,0.22,6),MAT.shuttle);
+sPt2.rotation.z=Math.PI/2; sPt2.position.x=-0.7;
+shuttleGroup.add(shuttleBody,sPt1,sPt2);
+// Bobbin thread on shuttle
+const bobbinMat=new THREE.MeshStandardMaterial({color:0x00e5ff,roughness:0.8});
+const bobbin=new THREE.Mesh(new THREE.CylinderGeometry(0.04,0.04,0.5,8),bobbinMat);
+bobbin.rotation.z=Math.PI/2; shuttleGroup.add(bobbin);
+shuttleGroup.position.set(-2.5,2.5,1.25);
+loomGroup.add(shuttleGroup);
+
+// ── TREADLES ──
+for(let t=0;t<4;t++){
+  loomGroup.add(box(0.7,0.06,0.8,MAT.woodDark, -1.5+t*1.0, 0.2, 1.8));
+}
+
+// ── BEATER ARMS ──
+const beaterArm1=box(0.1,1.2,0.1,MAT.wood,-2.1,2.0,1.25);
+const beaterArm2=box(0.1,1.2,0.1,MAT.wood,2.1,2.0,1.25);
+loomGroup.add(beaterArm1,beaterArm2);
+
+// ── TOP ROLLER ──
+loomGroup.add(cyl(0.12,0.12,5.0,12,MAT.metalShiny,0,4.65,1.3));
+
+// ── FAULT INDICATOR LIGHT (top of loom) ──
+const faultLight=new THREE.Mesh(
+  new THREE.SphereGeometry(0.18,12,12),
+  faultMat
+);
+faultLight.position.set(0,5.3,1.3);
+loomGroup.add(faultLight);
+const faultPointLight=new THREE.PointLight(0xff1744,0,3);
+faultPointLight.position.set(0,5.5,1.3);
+loomGroup.add(faultPointLight);
+
+// Position the whole loom
+loomGroup.position.set(0,0,0);
+
+// ═══════════════════════════════════════════════
+//  TECHNICAL OVERLAYS & DETAILS
+// ═══════════════════════════════════════════════
+// 1. Control Box
+const controlBoxGroup = new THREE.Group();
+controlBoxGroup.add(box(0.6, 0.8, 0.4, MAT.metalShiny, 0, 0, 0));
+const screenMat = new THREE.MeshStandardMaterial({color:0x001122, emissive:0x00e5ff, emissiveIntensity:0.3});
+controlBoxGroup.add(box(0.4, 0.3, 0.42, screenMat, 0, 0.15, 0));
+const cbLed1 = new THREE.Mesh(new THREE.CylinderGeometry(0.03,0.03,0.44,8), new THREE.MeshStandardMaterial({color:0x76ff03, emissive:0x76ff03}));
+cbLed1.rotation.x = Math.PI/2; cbLed1.position.set(-0.1, -0.2, 0);
+const cbLed2 = new THREE.Mesh(new THREE.CylinderGeometry(0.03,0.03,0.44,8), new THREE.MeshStandardMaterial({color:0xff1744, emissive:0xff1744}));
+cbLed2.rotation.x = Math.PI/2; cbLed2.position.set(0.1, -0.2, 0);
+controlBoxGroup.add(cbLed1, cbLed2);
+controlBoxGroup.position.set(2.6, 3.2, 0.5);
+loomGroup.add(controlBoxGroup);
+
+// 2. Main Drive Motor
+const motorGroup = new THREE.Group();
+motorGroup.add(cyl(0.25, 0.25, 0.6, 16, MAT.metalShiny, 0, 0, 0));
+const beltMat = new THREE.MeshStandardMaterial({color:0x111111, roughness:0.9});
+const driveBelt = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 2.0, 8), beltMat);
+driveBelt.position.set(0, 1.0, 0);
+motorGroup.add(driveBelt);
+motorGroup.position.set(2.6, 2.6, 1.3);
+motorGroup.rotation.z = Math.PI/12;
+loomGroup.add(motorGroup);
+
+// 3. Floor Rulers / Dimensions
+const rulerMat = new THREE.LineDashedMaterial({color: 0x00e5ff, dashSize: 0.1, gapSize: 0.1, transparent: true, opacity: 0.4});
+const geoX = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-2.4, 0.02, 3), new THREE.Vector3(2.4, 0.02, 3)]);
+const rulerX = new THREE.Line(geoX, rulerMat);
+rulerX.computeLineDistances();
+scene.add(rulerX);
+const geoZ = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-3, 0.02, 0), new THREE.Vector3(-3, 0.02, 2.6)]);
+const rulerZ = new THREE.Line(geoZ, rulerMat);
+rulerZ.computeLineDistances();
+scene.add(rulerZ);
+const geoY = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-3, 0.02, -0.5), new THREE.Vector3(-3, 5.0, -0.5)]);
+const rulerY = new THREE.Line(geoY, rulerMat);
+rulerY.computeLineDistances();
+scene.add(rulerY);
+
+// 4. Bounding Box Helper
+const loomBounds = new THREE.BoxHelper(loomGroup, 0x00e5ff);
+loomBounds.material.transparent = true;
+loomBounds.material.opacity = 0.15;
+scene.add(loomBounds);
+
+// 5. Laser Quality Scanner
+const laserGeo = new THREE.CylinderGeometry(0.01, 0.01, 3.8, 4);
+const laserMat = new THREE.MeshBasicMaterial({color: 0x00e5ff, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending});
+const laserLine = new THREE.Mesh(laserGeo, laserMat);
+laserLine.rotation.z = Math.PI/2;
+loomGroup.add(laserLine);
+
+// ═══════════════════════════════════════════════
+//  SPEED HISTORY CHART
+// ═══════════════════════════════════════════════
+const histCanvas = document.getElementById('history-canvas');
+const histCtx = histCanvas.getContext('2d');
+const speedHistory = new Array(40).fill(0);
+function drawHistory(){
+  const w=histCanvas.offsetWidth, h=60;
+  histCanvas.width=w; histCanvas.height=h;
+  histCtx.clearRect(0,0,w,h);
+  
+  const isLight = document.body.classList.contains('light-mode');
+  const accentHex = isLight ? '#0077ff' : '#00e5ff';
+  const gridRgba = isLight ? 'rgba(0,0,0,0.05)' : 'rgba(0,229,255,0.15)';
+  const fillRgba = isLight ? 'rgba(0,119,255,0.1)' : 'rgba(0,229,255,0.05)';
+
+  histCtx.strokeStyle=gridRgba;
+  histCtx.lineWidth=0.5;
+  for(let i=0;i<h;i+=10){
+    histCtx.beginPath();histCtx.moveTo(0,i);histCtx.lineTo(w,i);histCtx.stroke();
+  }
+  const max=300;
+  histCtx.beginPath();
+  histCtx.strokeStyle=accentHex;
+  histCtx.lineWidth=1.5;
+  histCtx.shadowBlur=isLight ? 0 : 6;
+  histCtx.shadowColor=accentHex;
+  for(let i=0;i<speedHistory.length;i++){
+    const x=(i/(speedHistory.length-1))*w;
+    const y=h-(speedHistory[i]/max)*h;
+    i===0?histCtx.moveTo(x,y):histCtx.lineTo(x,y);
+  }
+  histCtx.stroke();
+  histCtx.shadowBlur=0;
+  // fill
+  histCtx.lineTo(w,h); histCtx.lineTo(0,h); histCtx.closePath();
+  histCtx.fillStyle=fillRgba;
+  histCtx.fill();
+}
+
+// ═══════════════════════════════════════════════
+//  TWIN STATE
+// ═══════════════════════════════════════════════
+let twin = {
+  speed:0, status:'OFF', vibration:0, temperature:0,
+  warp_tension:0, weft_tension:0, power:0,
+  defect_rate:0, mode:'AUTO', yarn_type:'cotton',
+  timestamp:'', cycles:0, efficiency:null, quality:null,
+  pattern_id: null
+};
+let prevStatus='OFF';
+let prevPattern=null;
+let prevQuality=null;
+let shuttleX=-2.5, shuttleDir=1;
+let reedZ=1.25, reedDir=1;
+let heddlePhase=0;
+let clockTime=0;
+let demoMode=false;
+
+// ── HUD UPDATE ──
+function updateHUD(){
+  const t=twin;
+  document.getElementById('v-speed').textContent = Math.round(t.speed);
+  document.getElementById('v-warp').textContent = t.warp_tension.toFixed(2);
+  document.getElementById('v-weft').textContent = (t.weft_tension||0).toFixed(2);
+  document.getElementById('v-temp').textContent = t.temperature.toFixed(1) + "°C";
+  document.getElementById('v-vib').textContent = t.vibration.toFixed(3);
+  document.getElementById('v-defect').textContent = (t.defect_rate*100).toFixed(1);
+  
+  // callouts
+  document.getElementById('co-speed-v').textContent = Math.round(t.speed);
+  document.getElementById('co-temp-v').textContent = t.temperature.toFixed(1);
+  document.getElementById('co-tension-v').textContent = t.warp_tension.toFixed(1);
+  document.getElementById('co-vib-v').textContent = t.vibration.toFixed(3);
+
+  // bars
+  function setBar(id,val,max, defaultBg){
+    const pct=Math.min(100,(val/max)*100);
+    const bar=document.getElementById(id);
+    bar.style.width=pct+'%';
+    // color by threshold
+    let c = defaultBg;
+    if(pct>80) c='var(--fault)';
+    else if(pct>60) c='var(--warn)';
+    
+    bar.style.background=c;
+    bar.style.color=c;
+  }
+  setBar('b-warp',t.warp_tension,12, 'var(--accent2)');
+  setBar('b-weft',t.weft_tension||0,12, 'var(--accent2)');
+  setBar('b-temp',t.temperature,50, 'var(--warn)');
+  setBar('b-vib',t.vibration,0.5, 'var(--accent)');
+  setBar('b-speed',t.speed,300, 'var(--accent)');
+  setBar('b-defect',t.defect_rate*100,10, 'var(--accent2)');
+
+  // status
+  const dot=document.getElementById('status-dot');
+  const stTxt=document.getElementById('status-text');
+  const isFault=t.status==='FAULT';
+  const isOn=t.status==='ON';
+  dot.className='';
+  dot.classList.add(isFault?'fault':(isOn?'on':'off'));
+  stTxt.textContent=t.status;
+
+  document.getElementById('b-status').textContent=t.status;
+  document.getElementById('b-cycles').textContent=t.cycles||'—';
+  document.getElementById('b-eff').textContent=t.efficiency!=null?t.efficiency.toFixed(1)+'%':'—';
+  document.getElementById('b-quality').textContent=t.quality||'—';
+
+  document.getElementById('mode-badge').textContent=t.mode||'AUTO';
+  document.getElementById('yarn-badge').textContent=(t.yarn_type||'cotton').toUpperCase();
+
+  // defect colour
+  const dr=t.defect_rate;
+  const defEl=document.getElementById('v-defect');
+  defEl.style.color=dr>0.1?'var(--fault)':dr>0.05?'var(--warn)':'var(--accent2)';
+
+  // fault overlay
+  document.getElementById('fault-overlay').classList.toggle('active',isFault);
+
+  // timestamp
+  if(t.timestamp){
+    try{
+      const d=new Date(t.timestamp);
+      document.getElementById('ts-display').textContent=d.toLocaleTimeString();
+    }catch(e){}
+  }else{
+    document.getElementById('ts-display').textContent=new Date().toLocaleTimeString();
+  }
+
+  // speed history
+  speedHistory.push(t.speed);
+  if(speedHistory.length>40) speedHistory.shift();
+  drawHistory();
+
+  // log status change
+  if(t.status!==prevStatus){
+    logEvent(t.status==='FAULT'?'fault':t.status==='ON'?'ok':'info',
+      `Status → ${t.status}`);
+    prevStatus=t.status;
+  }
+  
+  // New detailed logs
+  if(t.pattern_id && t.pattern_id !== prevPattern){
+    logEvent('info', `Pattern → ${t.pattern_id} active`);
+    prevPattern = t.pattern_id;
+  }
+  if(t.quality && t.quality !== prevQuality){
+    const qType = t.quality === 'A' ? 'ok' : (t.quality === 'B' ? 'info' : 'fault');
+    logEvent(qType, `Quality Update → Grade ${t.quality}`);
+    prevQuality = t.quality;
+  }
+}
+
+// ── EVENT LOG ──
+function logEvent(type,msg){
+  const log=document.getElementById('fault-log');
+  const d=new Date();
+  const entry=document.createElement('div');
+  entry.className=`fault-entry ${type}`;
+  entry.textContent=`${d.toLocaleTimeString()} ${msg}`;
+  log.insertBefore(entry,log.firstChild);
+  while(log.children.length>20) log.removeChild(log.lastChild);
+}
+
+// ═══════════════════════════════════════════════
+//  FIWARE POLLING
+// ═══════════════════════════════════════════════
+let relayOk=null;
+async function fetchTwin(){
+  try{
+    const res=await fetch('http://localhost:5050/twin',{signal:AbortSignal.timeout(2000)});
+    if(!res.ok) throw new Error('bad status');
+    const data=await res.json();
+
+    console.log("FIWARE DATA:", data); // debug
+
+    if(relayOk!==true){
+      relayOk=true;
+      demoMode=false;
+      document.getElementById('relay-banner').style.display='none';
+      logEvent('ok','Relay connected');
+      document.getElementById('connection-info').textContent='✓ RELAY localhost:5050/twin';
+    }
+
+    // ✅ FIXED MAPPING (IMPORTANT)
+    twin.speed = data.machine_speed?.value ?? data.speed?.value ?? 0;
+    twin.status = data.machine_status?.value ?? data.status?.value ?? 'OFF';
+    twin.vibration = data.environment_vibration?.value ?? data.vibration?.value ?? 0;
+    twin.temperature = data.environment_temperature?.value ?? data.temperature?.value ?? 25;
+    twin.warp_tension = data.thread_warp_tension?.value ?? data.warp_tension?.value ?? 0;
+    twin.weft_tension = data.thread_weft_tension?.value ?? data.weft_tension?.value ?? (twin.warp_tension * 0.9);
+    twin.power = data.energy_power?.value ?? data.power?.value ?? 0;
+    twin.defect_rate = data.production_defect_rate?.value ?? data.defect_rate?.value ?? 0;
+    twin.mode = data.control_mode?.value ?? data.mode?.value ?? 'AUTO';
+    twin.yarn_type = data.thread_yarn_type?.value ?? data.yarn_type?.value ?? 'cotton';
+    twin.timestamp = data.timestamp?.value ?? '';
+    twin.cycles = data.machine_cycles?.value ?? 0;
+    twin.efficiency = data.production_efficiency?.value ?? null;
+    twin.quality = data.production_quality?.value ?? null;
+    twin.pattern_id = data.process_pattern_id?.value ?? null;
+
+    updateHUD();
+
+  }catch(e){
+    if(relayOk!==false){
+      relayOk=false;
+      demoMode=true;
+      document.getElementById('relay-banner').style.display='block';
+      logEvent('info','Demo mode (relay offline)');
+      document.getElementById('connection-info').textContent='⚠ DEMO MODE — relay offline';
+    }
+
+    // Demo fallback (unchanged)
+    const t=Date.now()/1000;
+    twin.speed = 80+Math.sin(t*0.3)*40+Math.sin(t*1.1)*15;
+    twin.status = Math.sin(t*0.2)>0.85?'FAULT':'ON';
+    twin.vibration = 0.05+Math.abs(Math.sin(t*2.1))*0.15;
+    twin.temperature = 32+Math.sin(t*0.1)*5;
+    twin.warp_tension = 5+Math.sin(t*0.7)*2;
+    twin.weft_tension = 4.5+Math.sin(t*0.5+1)*2;
+    twin.power = 600+twin.speed*4+Math.random()*50;
+    twin.defect_rate = Math.max(0,0.03+Math.sin(t*0.15)*0.04);
+    twin.mode='AUTO'; twin.yarn_type='silk';
+    twin.timestamp=new Date().toISOString();
+    twin.cycles=Math.floor(t*5);
+    twin.efficiency=88+Math.sin(t*0.1)*8;
+    twin.quality=twin.defect_rate<0.05?'GOOD':'FAIR';
+
+    updateHUD();
+  }
+}
+
+setInterval(fetchTwin,1500);
+fetchTwin();
+
+// ═══════════════════════════════════════════════
+//  ANIMATION LOOP
+// ═══════════════════════════════════════════════
+const clock=new THREE.Clock();
+let frameCount=0;
+
+function animate(){
+  requestAnimationFrame(animate);
+  const delta=clock.getDelta();
+  const elapsed=clock.getElapsedTime();
+  frameCount++;
+
+  const isRunning=twin.status==='ON'||twin.status==='FAULT';
+  const speedFactor=twin.speed/200; // 0..1.5
+  const isFault=twin.status==='FAULT';
+
+  // ── SHUTTLE ANIMATION ──
+  if(isRunning && twin.speed>5){
+    const shuttleSpeed=0.8+speedFactor*6;
+    shuttleX += shuttleDir * shuttleSpeed * delta;
+    if(shuttleX>2.6){ shuttleX=2.6; shuttleDir=-1; }
+    if(shuttleX<-2.6){ shuttleX=-2.6; shuttleDir=1; }
+    shuttleGroup.position.x=shuttleX;
+    // slight bounce
+    shuttleGroup.position.y=2.5+Math.abs(Math.sin(elapsed*10*speedFactor))*0.03;
+  }
+
+  // ── REED / BEATER ANIMATION ──
+  if(isRunning && twin.speed>5){
+    const beatSpeed=1.5+speedFactor*3;
+    heddlePhase+=delta*beatSpeed;
+    const reedSwing=Math.sin(heddlePhase)*0.28;
+    reedGroup.position.z=1.25+reedSwing;
+    reedGroup.rotation.x=reedSwing*0.5;
+    beaterArm1.rotation.x=reedSwing*0.5;
+    beaterArm2.rotation.x=reedSwing*0.5;
+  }
+
+  // ── HEDDLE / SHAFT MOTION ──
+  if(isRunning && twin.speed>5){
+    const hSpeed=speedFactor*3+1;
+    h1.position.y=2.5+Math.sin(elapsed*hSpeed)*0.2;
+    h2.position.y=2.5+Math.sin(elapsed*hSpeed+Math.PI)*0.2;
+  }
+
+  // ── BEAM ROTATION ──
+  if(isRunning){
+    clothBeamGroup.rotation.x+=delta*speedFactor*1.5;
+    warpBeamGroup.rotation.x-=delta*speedFactor*0.5;
+    cyl(0,0,0,0,null,0,0,0); // no-op
+  }
+
+  // ── VIBRATION ──
+  if(isRunning && twin.vibration>0.05){
+    const vib=twin.vibration*0.15;
+    loomGroup.position.x=Math.sin(elapsed*50)*vib;
+    loomGroup.position.z=Math.cos(elapsed*47)*vib*0.5;
+  } else {
+    loomGroup.position.x*=0.9;
+    loomGroup.position.z*=0.9;
+  }
+
+  // ── WARP THREAD COLOR ── (tension-based)
+  const tension=twin.warp_tension;
+  const tc = tension<3?0x00e5ff : tension<7?0x76ff03 : tension<9?0xff9100 : 0xff1744;
+  warpPositions.forEach(w=>{w.material.color.setHex(tc);});
+
+  // ── FAULT GLOW ──
+  if(isFault){
+    const pulse=0.5+Math.sin(elapsed*8)*0.5;
+    faultMat.emissiveIntensity=pulse*1.5;
+    faultPointLight.intensity=pulse*3;
+    loomLight.color.setHex(0xff1744);
+    loomLight.intensity=0.5+pulse*0.8;
+  } else {
+    faultMat.emissiveIntensity*=0.9;
+    faultPointLight.intensity*=0.9;
+    loomLight.color.setHex(0x00e5ff);
+    loomLight.intensity=0.8+speedFactor*0.6;
+  }
+
+  // ── AMBIENT LIGHT COLOR ── based on status
+  if(isRunning && !isFault){
+    ambientLight.intensity=0.7+speedFactor*0.3;
+    ambientLight.color.lerp(new THREE.Color(0x1a2a40),0.05);
+  } else if(!isRunning){
+    ambientLight.intensity=0.4;
+  }
+
+  // ── FABRIC PROGRESS ── slow cloth beam unroll effect
+  if(isRunning){
+    fabricMesh.scale.y=Math.min(1.0, fabricMesh.scale.y+delta*0.005);
+  }
+
+  // ── CLOTH BEAM ROTATION ──
+  if(isRunning){
+    clothBeamGroup.children[0].rotation.x+=delta*speedFactor*1.5;
+    warpBeamGroup.children[0].rotation.x-=delta*speedFactor*0.5;
+  }
+
+  // ── LASER SCANNER & BOUNDS UPDATE ──
+  laserLine.position.z = 0.6 + Math.sin(elapsed*2)*0.3;
+  laserLine.position.y = 1.1 - Math.sin(elapsed*2)*0.1; // match slope
+  loomBounds.update();
+
+  // ── CALLOUT POSITIONING ──
+  function updateCallout(id, x, y, z){
+    const el = document.getElementById(id);
+    const pos = new THREE.Vector3(x, y, z);
+    pos.project(camera);
+    
+    const cx = (pos.x * 0.5 + 0.5) * W();
+    const cy = (-pos.y * 0.5 + 0.5) * H();
+    
+    // Check if behind camera
+    if(pos.z > 1){
+      el.classList.remove('visible');
+    } else {
+      el.classList.add('visible');
+      el.style.transform = `translate(${cx}px, ${cy - 45}px)`; // offset for label height
+    }
+  }
+  
+  updateCallout('co-speed', shuttleX, 2.5, 1.25);
+  updateCallout('co-temp', 2.4, 4.8, 1.3);
+  updateCallout('co-tension', 0, 3.2, 1.2);
+  updateCallout('co-vib', -2.4, 0.5, 0);
+  
+  // Dimension callouts
+  updateCallout('co-dim-w', 0, 0, 3.2);
+  updateCallout('co-dim-d', -3.2, 0, 1.3);
+  updateCallout('co-dim-h', -3.2, 2.5, -0.5);
+
+  renderer.render(scene,camera);
+
+  // Hide controls hint after 5 seconds
+  if(elapsed>5){
+    document.getElementById('controls-hint').style.opacity='0';
+  }
+}
+animate();
+
+// Hide relay banner after initial check
+setTimeout(()=>{
+  if(relayOk===null) demoMode=true;
+},3000);
+
+// ═══════════════════════════════════════════════
+//  RAYCASTER LOGIC (Click Loom to open Weave View)
+// ═══════════════════════════════════════════════
+const raycaster = new THREE.Raycaster();
+const clickMouse = new THREE.Vector2();
+let mDownX = 0, mDownY = 0;
+
+renderer.domElement.addEventListener('mousedown', e => {
+    mDownX = e.clientX; 
+    mDownY = e.clientY;
+});
+
+renderer.domElement.addEventListener('mouseup', e => {
+    // If dragged, ignore
+    if(Math.abs(e.clientX - mDownX) > 5 || Math.abs(e.clientY - mDownY) > 5) return;
+    
+    clickMouse.x = (e.clientX / W()) * 2 - 1;
+    clickMouse.y = -(e.clientY / H()) * 2 + 1;
+    raycaster.setFromCamera(clickMouse, camera);
+    
+    // Check intersection with woven core parts
+    const intersects = raycaster.intersectObjects([warpGroup, reedGroup, shuttleGroup], true);
+    if(intersects.length > 0) {
+        const isLight = document.body.classList.contains('light-mode');
+        document.getElementById('weave-iframe').src = 'weave.html' + (isLight ? '?theme=light' : '');
+        document.getElementById('weave-modal').style.display = 'flex';
+    }
+});
+
+// Cursor changes to pointer when hovering over the loom core
+renderer.domElement.addEventListener('mousemove', e => {
+    if(orbitState.rotating || orbitState.panning) return;
+    clickMouse.x = (e.clientX / W()) * 2 - 1;
+    clickMouse.y = -(e.clientY / H()) * 2 + 1;
+    raycaster.setFromCamera(clickMouse, camera);
+    const intersects = raycaster.intersectObjects([warpGroup, reedGroup, shuttleGroup], true);
+    document.body.style.cursor = intersects.length > 0 ? 'pointer' : 'default';
+});
+
+// Close Modal
+document.getElementById('close-modal').addEventListener('click', () => {
+    document.getElementById('weave-modal').style.display = 'none';
+    document.getElementById('weave-iframe').src = ''; // stop rendering inside
+});
+
+// Theme Toggle
+document.getElementById('theme-toggle').addEventListener('click', () => {
+    document.body.classList.toggle('light-mode');
+    const isLight = document.body.classList.contains('light-mode');
+    const btn = document.getElementById('theme-toggle');
+    if(isLight) {
+        btn.textContent = '🌙';
+        scene.background.setHex(0xffffff);
+        scene.fog.color.setHex(0xffffff);
+        groundMat.color.setHex(0xe8ecf1);
+    } else {
+        btn.textContent = '☀️';
+        scene.background.setHex(0x0a0c0f);
+        scene.fog.color.setHex(0x0a0c0f);
+        groundMat.color.setHex(0x0d1017);
+    }
+    drawHistory(); // redraw chart with new colors
+    
+    // Notify weave iframe of theme change
+    const iframe = document.getElementById('weave-iframe');
+    if(iframe && iframe.contentWindow) {
+        iframe.contentWindow.postMessage({ theme: isLight ? 'light' : 'dark' }, '*');
+    }
+});
+
+</script>
+</body>
+</html>

@@ -8,13 +8,11 @@ A high-fidelity, real-time, physics-based Digital Twin of a traditional Handloom
 - **FIWARE IoT Integration**: Connects to the Orion Context Broker to ingest live telemetry such as machine speed, thread tension, temperature, and vibration.
 - **Dynamic Physics Integration**: Real-time visualization of thread sagging, tension variations, and potential thread breaks (defect rate simulation) using Catmull-Rom splines.
 - **Premium UI & Themes**: A high-end responsive HUD featuring glowing gauge bars, canvas-based live charting, and a built-in synchronized Light/Dark Mode toggle.
+- **Loom Intelligence Dashboard**: A dedicated analytics interface connecting the UI directly to a live FastAPI machine learning inference engine. Features interactive prediction controls, live telemetry overlays, and rich validation charts.
 
 ---
 
 ## 🏗️ Architecture & Digital Twin Setup
-<img width="1024" height="559" alt="image" src="https://github.com/user-attachments/assets/d47b6e20-3276-4a20-bd81-043660df791d" />
-<img width="1688" height="823" alt="image" src="https://github.com/user-attachments/assets/b526f93d-fd8f-4cf1-81d9-875c1b56a789" />
-
 
 The architecture of this Digital Twin is split into three primary layers:
 
@@ -36,6 +34,48 @@ The frontend (`index.html` & `weave.html`) is built purely with Native JS, HTML,
 - **Catmull-Rom Splines**: Used to generate the continuous tubular 3D geometry for the weft threads. A mathematical curve drops the spline vertices down proportionally to `(5.0 - live_tension)`, visually simulating real-world thread sag and tension loss.
 - **Linear Interpolation (Lerp)**: Used for the smooth transition animations of the mechanical shed (the alternating up/down of warp threads) bound by `MAX_SHED_ANGLE`.
 - **Matrix Mapping Algorithm**: Converts 2D boolean matrices (e.g., `[1,0,1,0]`) into 3D mechanical positioning. `1` targets an "UP" position, and `0` targets a "DOWN" position to physically recreate twill, basket, and satin fabric structures in WebGL.
+
+---
+
+## 🤖 AI & Predictive Models Architecture
+
+The project integrates a comprehensive suite of machine learning models to power the predictive aspects of the Digital Twin, forming a complete **Digital Twin + AI Optimization System**.
+
+### 1. Quality Prediction Model (Random Forest Classifier)
+- **Input**: Machine (speed, cycles), Thread (tensions, yarn_type), Environment, Pattern matrices, Engineered features.
+- **Output**: Quality Class (0=Reject, 1=Standard, 2=Premium, 3=Flawless).
+- **Use**: Predicts fabric quality for optimization and the what-if simulator.
+
+### 2. Defect Rate Model (Random Forest Regressor)
+- **Input**: Same as Quality Model.
+- **Output**: Continuous defect rate value (e.g., 0.25).
+- **Use**: Predicts production defects to minimize errors.
+
+### 3. Fault Detection Model (Random Forest Classifier)
+- **Input**: Vibration, tensions, vibration_delta, tension_delta.
+- **Output**: Fault Class (0=Normal, 1=Thread Break, 2=Motor Fault, 3=Overheat).
+- **Use**: Early warning system for thread breaks or overheating.
+
+### 4. Predictive Maintenance Model (Random Forest Classifier)
+- **Input**: Anomaly score, vibration, tension, machine signals.
+- **Output**: Maintenance requirement probability (0=Healthy, 1=Maintenance Req).
+- **Use**: Decides when maintenance is required to reduce downtime.
+
+### 5. Optimization Engine & Simulator (FastAPI)
+*(Logic-based Integrations exposed via REST API)*
+- **Optimization Engine**: Takes speed/tension ranges and outputs the best configuration by iterating through the Quality and Defect models.
+- **What-If Simulator**: Takes user inputs from the UI and outputs interactive predictions (quality, defect, fault probability) in real-time.
+
+### 🔄 Final ML Architecture Flow
+```text
+Raw Data ➔ Feature Engineering
+       ↓
+[ Quality | Defect | Fault | RPM | Anomaly | Maintenance ] Models
+       ↓
+Optimization + What-If Simulator
+       ↓
+UI Dashboard (Digital Twin)
+```
 
 ---
 
@@ -114,7 +154,17 @@ python app.py
 ```
 *Verify the relay is active by visiting: `http://localhost:5050/twin`*
 
-### 3. Launch the Application
+### 3. Start the Machine Learning Inference Backend (FastAPI)
+The Loom Intelligence dashboard relies on a local FastAPI backend running the Random Forest predictive models.
+Open a new terminal, activate your virtual environment, and start the server:
+```bash
+cd loom_3d/digital_twin
+# Ensure dependencies are installed (fastapi, uvicorn, scikit-learn)
+uvicorn api.main:app --reload
+```
+*Verify the ML backend is active by checking the Swagger UI at: `http://localhost:8000/docs`*
+
+### 4. Launch the Application
 Navigate to the frontend folder. Because the frontend uses cross-document communication (iframes and postMessage), it is highly recommended to serve the HTML files using a local HTTP server rather than opening them via the `file://` protocol.
 
 Using Python's built-in server:
