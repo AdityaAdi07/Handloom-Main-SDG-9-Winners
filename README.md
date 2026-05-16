@@ -89,6 +89,8 @@ Traditional handloom weaving is a complex mechanical process that requires preci
 - Terminal console for command-based control
 
 ### 8. Alert System
+<img width="1239" height="577" alt="image" src="https://github.com/user-attachments/assets/3abc38f7-c11b-487b-b9a0-cfb892b623f2" />
+
 - Automated email notifications for critical conditions
 - Configurable thresholds for fault detection
 - Real-time status indicators (safe/warning/critical)
